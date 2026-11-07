@@ -1,0 +1,45 @@
+x-service: &service
+  build: .
+  restart: unless-stopped
+  environment: &environment
+    HOST: 0.0.0.0
+    SERVICE_TOKEN: ${SERVICE_TOKEN:?Defina SERVICE_TOKEN no arquivo .env}
+    CATALOG_URL: http://catalog:4001
+    CART_URL: http://cart:4002
+    ORDERS_URL: http://orders:4003
+
+services:
+  catalog:
+    <<: *service
+    command: node services/catalog/server.mjs
+    volumes: [catalog-data:/app/data]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:4001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  cart:
+    <<: *service
+    command: node services/cart/server.mjs
+    volumes: [cart-data:/app/data]
+    depends_on:
+      catalog: { condition: service_healthy }
+  orders:
+    <<: *service
+    command: node services/orders/server.mjs
+    volumes: [orders-data:/app/data]
+    depends_on:
+      catalog: { condition: service_healthy }
+      cart: { condition: service_started }
+  gateway:
+    <<: *service
+    environment:
+      <<: *environment
+      SESSION_SECRET: ${SESSION_SECRET:-${SERVICE_TOKEN}}
+    ports: ["3000:3000"]
+    depends_on: [catalog, cart, orders]
+
+volumes:
+  catalog-data:
+  cart-data:
+  orders-data:
